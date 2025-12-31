@@ -1,5 +1,9 @@
-name: telegram message
-on: [push]
+name: Telegram Message
+on:
+  push:
+    branches:
+      - main
+      - dev
 
 jobs:
   build:
@@ -35,6 +39,23 @@ jobs:
             📦 Repository: `${{ github.repository }}`
             🔀 Branch: `${{ github.ref_name }}`
             📝 Commit: `${{ github.sha }}`
+
+      # Notification for dev branch push
+      - name: Dev branch notification
+        if: github.ref == 'refs/heads/dev'
+        uses: ./
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          message_thread_id: ${{ secrets.TELEGRAM_THREAD_ID }}
+          format: markdown
+          message: |
+            🧪 *Dev Branch Update*
+
+            📦 Repository: `${{ github.repository }}`
+            📝 Commit: ${{ github.event.head_commit.message }}
+            👤 Author: `${{ github.actor }}`
+            🔗 [View Changes](https://github.com/${{ github.repository }}/commit/${{ github.sha }})
 
       # Default message (no custom message)
       - name: Send default message
