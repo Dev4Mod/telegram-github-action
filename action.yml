@@ -1,5 +1,5 @@
-name: "Telegram Message Notify"
-description: "Send Telegram notification messages with topic/forum support"
+name: "Telegram Topic Notify"
+description: "Send Telegram notifications to groups and forum topics with message_thread_id support"
 author: "Salmansha08"
 
 inputs:
