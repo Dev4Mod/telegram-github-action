@@ -1,4 +1,4 @@
-name: Telegram Message
+name: Telegram Notification
 on:
   push:
     branches:
@@ -7,80 +7,24 @@ on:
 
 jobs:
   build:
-    name: Build
+    name: Build & Notify
     runs-on: ubuntu-latest
     environment: "Telegram Github Action"
     steps:
       - uses: actions/checkout@v4
 
-      # Basic message
-      - name: Send basic message
-        uses: ./
-        with:
-          to: ${{ secrets.TELEGRAM_CHAT_ID }}
-          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          message: |
-            🚀 Push detected on ${{ github.repository }}
-
-            📝 Commit: ${{ github.event.head_commit.message }}
-            👤 Author: ${{ github.actor }}
-            🔗 See: https://github.com/${{ github.repository }}/commit/${{ github.sha }}
-
-      # Send to topic (forum)
-      - name: Send to CI topic
+      # Main notification - sent to topic
+      - name: 📢 CI Notification
         uses: ./
         with:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
           token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           message_thread_id: ${{ secrets.TELEGRAM_THREAD_ID }}
-          format: markdown
+          format: html
           message: |
-            ✅ *Build #${{ github.run_number }}* successful!
+            <b>🚀 Push to ${{ github.ref_name }}</b>
 
-            📦 Repository: `${{ github.repository }}`
-            🔀 Branch: `${{ github.ref_name }}`
-            📝 Commit: `${{ github.sha }}`
-
-      # Notification for dev branch push
-      - name: Dev branch notification
-        if: github.ref == 'refs/heads/dev'
-        uses: ./
-        with:
-          to: ${{ secrets.TELEGRAM_CHAT_ID }}
-          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          message_thread_id: ${{ secrets.TELEGRAM_THREAD_ID }}
-          format: markdown
-          message: |
-            🧪 *Dev Branch Update*
-
-            📦 Repository: `${{ github.repository }}`
-            📝 Commit: ${{ github.event.head_commit.message }}
-            👤 Author: `${{ github.actor }}`
-            🔗 [View Changes](https://github.com/${{ github.repository }}/commit/${{ github.sha }})
-
-      # Default message (no custom message)
-      - name: Send default message
-        uses: ./
-        with:
-          to: ${{ secrets.TELEGRAM_CHAT_ID }}
-          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-
-      # Disable link preview
-      - name: Message without preview
-        uses: ./
-        with:
-          to: ${{ secrets.TELEGRAM_CHAT_ID }}
-          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          disable_web_page_preview: true
-          message: |
-            Check out this link without preview: https://github.com
-
-      # Silent notification
-      - name: Silent notification
-        uses: ./
-        with:
-          to: ${{ secrets.TELEGRAM_CHAT_ID }}
-          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          disable_notification: true
-          message: |
-            🔕 This is a silent notification
+            📦 <code>${{ github.repository }}</code>
+            📝 ${{ github.event.head_commit.message }}
+            👤 ${{ github.actor }}
+            🔗 <a href="https://github.com/${{ github.repository }}/commit/${{ github.sha }}">View Commit</a>
