@@ -147,51 +147,58 @@ send_media_group() {
   local caption="$4"
   local thread_id="$5"
 
-  local media_payload="["
   local index=0
-  local attach_fields=""
+  local entries=""
   local file_path
+  local entry
+
+  set -- -s -X POST "${TELEGRAM_API}/sendMediaGroup" \
+    -F "chat_id=${chat_id}"
 
   while IFS= read -r file_path; do
     if [ -z "$file_path" ]; then
       continue
     fi
 
+    entry=$(jq -n \
+      --arg type "$media_type" \
+      --arg media "attach://file${index}" \
+      --arg caption "$caption" \
+      --arg parse_mode "$PARSE_MODE" \
+      'if $caption != "" and $parse_mode != "" then
+          {type:$type, media:$media, caption:$caption, parse_mode:$parse_mode}
+        elif $caption != "" then
+          {type:$type, media:$media, caption:$caption}
+        else
+          {type:$type, media:$media}
+        end'
+    )
+
     if [ $index -gt 0 ]; then
-      media_payload="${media_payload},"
+      entries="${entries}
+"
     fi
+    entries="${entries}${entry}"
 
-    media_payload="${media_payload}{\"type\":\"${media_type}\",\"media\":\"attach://file${index}\""
-    if [ $index -eq 0 ] && [ -n "$caption" ]; then
-      media_payload="${media_payload},\"caption\":\"${caption}\""
-      if [ -n "$PARSE_MODE" ]; then
-        media_payload="${media_payload},\"parse_mode\":\"${PARSE_MODE}\""
-      fi
-    fi
-    media_payload="${media_payload}}"
-
-    attach_fields="${attach_fields} -F file${index}=@${file_path}"
+    set -- "$@" -F "file${index}=@${file_path}"
     index=$((index + 1))
   done <<EOF
 ${media_list}
 EOF
 
-  media_payload="${media_payload}]"
-
   if [ $index -eq 0 ]; then
     return
   fi
 
-  set -- -s -X POST "${TELEGRAM_API}/sendMediaGroup" \
-    -F "chat_id=${chat_id}" \
-    -F "media=${media_payload}"
+  media_payload=$(printf '%s
+' "$entries" | jq -s '.')
+  set -- "$@" -F "media=${media_payload}"
 
   if [ -n "$thread_id" ]; then
     set -- "$@" -F "message_thread_id=${thread_id}"
   fi
 
-  # shellcheck disable=SC2086
-  RESPONSE=$(eval curl "$@" ${attach_fields})
+  RESPONSE=$(curl "$@")
 
   OK=$(echo "$RESPONSE" | jq -r '.ok')
   if [ "$OK" != "true" ]; then
