@@ -151,6 +151,11 @@ send_media_group() {
   local entries=""
   local file_path
   local entry
+  local total
+  local last_index
+
+  total=$(printf '%s\n' "$media_list" | awk 'NF{count++} END{print count+0}')
+  last_index=$((total - 1))
 
   set -- -s -X POST "${TELEGRAM_API}/sendMediaGroup" \
     -F "chat_id=${chat_id}"
@@ -160,19 +165,25 @@ send_media_group() {
       continue
     fi
 
-    entry=$(jq -n \
-      --arg type "$media_type" \
-      --arg media "attach://file${index}" \
-      --arg caption "$caption" \
-      --arg parse_mode "$PARSE_MODE" \
-      'if $caption != "" and $parse_mode != "" then
-          {type:$type, media:$media, caption:$caption, parse_mode:$parse_mode}
-        elif $caption != "" then
-          {type:$type, media:$media, caption:$caption}
-        else
-          {type:$type, media:$media}
-        end'
-    )
+    if [ $index -eq $last_index ] && [ -n "$caption" ]; then
+      entry=$(jq -n \
+        --arg type "$media_type" \
+        --arg media "attach://file${index}" \
+        --arg caption "$caption" \
+        --arg parse_mode "$PARSE_MODE" \
+        'if $parse_mode != "" then
+            {type:$type, media:$media, caption:$caption, parse_mode:$parse_mode}
+          else
+            {type:$type, media:$media, caption:$caption}
+          end'
+      )
+    else
+      entry=$(jq -n \
+        --arg type "$media_type" \
+        --arg media "attach://file${index}" \
+        '{type:$type, media:$media}'
+      )
+    fi
 
     if [ $index -gt 0 ]; then
       entries="${entries}
@@ -264,8 +275,8 @@ fi
 
 THREAD_ID="${INPUT_MESSAGE_THREAD_ID:-}"
 
-# Send text message
-if [ -n "${MESSAGE}" ]; then
+# Send text message (skip when documents are provided)
+if [ -n "${MESSAGE}" ] && [ -z "${INPUT_DOCUMENT:-}" ]; then
   echo "📤 Sending message to chat: ${INPUT_TO}"
   if [ -n "${THREAD_ID}" ]; then
     echo "📌 Topic/Thread ID: ${THREAD_ID}"
@@ -299,7 +310,7 @@ if [ -n "${INPUT_DOCUMENT:-}" ]; then
   elif [ "$DOCUMENT_COUNT" -eq 1 ]; then
     document_path=$(printf '%s\n' "$DOCUMENT_LIST" | awk 'NF{print; exit}')
     echo "📄 Sending document: ${document_path}"
-    send_document "${INPUT_TO}" "${document_path}" "" "${THREAD_ID}"
+    send_document "${INPUT_TO}" "${document_path}" "${MESSAGE}" "${THREAD_ID}"
   fi
 fi
 
