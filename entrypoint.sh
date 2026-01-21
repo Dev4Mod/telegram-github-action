@@ -25,6 +25,39 @@ else
 🔗 [View Workflow](${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-}/actions/runs/${GITHUB_RUN_ID:-})"
 fi
 
+# Trim leading/trailing spaces
+trim_spaces() {
+  value="$1"
+
+  while [ "${value# }" != "$value" ]; do
+    value="${value# }"
+  done
+
+  while [ "${value% }" != "$value" ]; do
+    value="${value% }"
+  done
+
+  printf '%s' "$value"
+}
+
+# Normalize comma/newline-separated lists
+normalize_list() {
+  local value="$1"
+  local item
+  local old_ifs="$IFS"
+
+  IFS='
+'
+  for item in $(printf '%s' "$value" | tr ',' '\n'); do
+    item=$(trim_spaces "$item")
+    if [ -n "$item" ]; then
+      printf '%s\n' "$item"
+    fi
+  done
+
+  IFS="$old_ifs"
+}
+
 # Function to send text message
 send_message() {
   local chat_id="$1"
@@ -40,6 +73,7 @@ send_message() {
   "disable_notification": ${DISABLE_NOTIFICATION}
 EOF
 )
+
 
   # Add parse_mode if set
   if [ -n "${PARSE_MODE}" ]; then
@@ -76,21 +110,24 @@ send_photo() {
   local caption="${3:-}"
   local thread_id="${4:-}"
 
-  FORM_DATA="-F chat_id=${chat_id} -F photo=@${photo}"
-  
+  set -- -s -X POST "${TELEGRAM_API}/sendPhoto" \
+    -F "chat_id=${chat_id}" \
+    -F "photo=@${photo}"
+
   if [ -n "${caption}" ]; then
-    FORM_DATA="${FORM_DATA} -F caption=${caption}"
+    set -- "$@" -F "caption=${caption}"
   fi
-  
+
   if [ -n "${PARSE_MODE}" ]; then
-    FORM_DATA="${FORM_DATA} -F parse_mode=${PARSE_MODE}"
+    set -- "$@" -F "parse_mode=${PARSE_MODE}"
   fi
 
   if [ -n "${thread_id}" ]; then
-    FORM_DATA="${FORM_DATA} -F message_thread_id=${thread_id}"
+    set -- "$@" -F "message_thread_id=${thread_id}"
   fi
 
-  RESPONSE=$(eval curl -s -X POST "${TELEGRAM_API}/sendPhoto" ${FORM_DATA})
+  RESPONSE=$(curl "$@")
+
 
   OK=$(echo "$RESPONSE" | jq -r '.ok')
   if [ "$OK" != "true" ]; then
@@ -102,6 +139,71 @@ send_photo() {
   echo "Photo sent successfully!"
 }
 
+# Function to send media group
+send_media_group() {
+  local chat_id="$1"
+  local media_type="$2"
+  local media_list="$3"
+  local caption="$4"
+  local thread_id="$5"
+
+  local media_payload="["
+  local index=0
+  local attach_fields=""
+  local file_path
+
+  while IFS= read -r file_path; do
+    if [ -z "$file_path" ]; then
+      continue
+    fi
+
+    if [ $index -gt 0 ]; then
+      media_payload="${media_payload},"
+    fi
+
+    media_payload="${media_payload}{\"type\":\"${media_type}\",\"media\":\"attach://file${index}\""
+    if [ $index -eq 0 ] && [ -n "$caption" ]; then
+      media_payload="${media_payload},\"caption\":\"${caption}\""
+      if [ -n "$PARSE_MODE" ]; then
+        media_payload="${media_payload},\"parse_mode\":\"${PARSE_MODE}\""
+      fi
+    fi
+    media_payload="${media_payload}}"
+
+    attach_fields="${attach_fields} -F file${index}=@${file_path}"
+    index=$((index + 1))
+  done <<EOF
+${media_list}
+EOF
+
+  media_payload="${media_payload}]"
+
+  if [ $index -eq 0 ]; then
+    return
+  fi
+
+  set -- -s -X POST "${TELEGRAM_API}/sendMediaGroup" \
+    -F "chat_id=${chat_id}" \
+    -F "media=${media_payload}"
+
+  if [ -n "$thread_id" ]; then
+    set -- "$@" -F "message_thread_id=${thread_id}"
+  fi
+
+  # shellcheck disable=SC2086
+  RESPONSE=$(eval curl "$@" ${attach_fields})
+
+  OK=$(echo "$RESPONSE" | jq -r '.ok')
+  if [ "$OK" != "true" ]; then
+    ERROR_DESC=$(echo "$RESPONSE" | jq -r '.description // "Unknown error"')
+    echo "Error sending media group: ${ERROR_DESC}"
+    exit 1
+  fi
+
+  echo "Media group sent successfully!"
+}
+
+
 # Function to send document
 send_document() {
   local chat_id="$1"
@@ -109,21 +211,24 @@ send_document() {
   local caption="${3:-}"
   local thread_id="${4:-}"
 
-  FORM_DATA="-F chat_id=${chat_id} -F document=@${document}"
-  
+  set -- -s -X POST "${TELEGRAM_API}/sendDocument" \
+    -F "chat_id=${chat_id}" \
+    -F "document=@${document}"
+
   if [ -n "${caption}" ]; then
-    FORM_DATA="${FORM_DATA} -F caption=${caption}"
+    set -- "$@" -F "caption=${caption}"
   fi
-  
+
   if [ -n "${PARSE_MODE}" ]; then
-    FORM_DATA="${FORM_DATA} -F parse_mode=${PARSE_MODE}"
+    set -- "$@" -F "parse_mode=${PARSE_MODE}"
   fi
 
   if [ -n "${thread_id}" ]; then
-    FORM_DATA="${FORM_DATA} -F message_thread_id=${thread_id}"
+    set -- "$@" -F "message_thread_id=${thread_id}"
   fi
 
-  RESPONSE=$(eval curl -s -X POST "${TELEGRAM_API}/sendDocument" ${FORM_DATA})
+  RESPONSE=$(curl "$@")
+
 
   OK=$(echo "$RESPONSE" | jq -r '.ok')
   if [ "$OK" != "true" ]; then
@@ -161,16 +266,35 @@ if [ -n "${MESSAGE}" ]; then
   send_message "${INPUT_TO}" "${MESSAGE}" "${THREAD_ID}"
 fi
 
-# Send photo if provided
+# Send photo(s) if provided
 if [ -n "${INPUT_PHOTO:-}" ]; then
-  echo "📷 Sending photo: ${INPUT_PHOTO}"
-  send_photo "${INPUT_TO}" "${INPUT_PHOTO}" "${MESSAGE}" "${THREAD_ID}"
+  PHOTO_LIST=$(normalize_list "${INPUT_PHOTO}")
+  PHOTO_COUNT=$(printf '%s\n' "$PHOTO_LIST" | awk 'NF{count++} END{print count+0}')
+
+  if [ "$PHOTO_COUNT" -gt 1 ]; then
+    echo "📷 Sending ${PHOTO_COUNT} photos as media group"
+    send_media_group "${INPUT_TO}" "photo" "${PHOTO_LIST}" "${MESSAGE}" "${THREAD_ID}"
+  elif [ "$PHOTO_COUNT" -eq 1 ]; then
+    photo_path=$(printf '%s\n' "$PHOTO_LIST" | awk 'NF{print; exit}')
+    echo "📷 Sending photo: ${photo_path}"
+    send_photo "${INPUT_TO}" "${photo_path}" "${MESSAGE}" "${THREAD_ID}"
+  fi
 fi
 
-# Send document if provided
+# Send document(s) if provided
 if [ -n "${INPUT_DOCUMENT:-}" ]; then
-  echo "📄 Sending document: ${INPUT_DOCUMENT}"
-  send_document "${INPUT_TO}" "${INPUT_DOCUMENT}" "" "${THREAD_ID}"
+  DOCUMENT_LIST=$(normalize_list "${INPUT_DOCUMENT}")
+  DOCUMENT_COUNT=$(printf '%s\n' "$DOCUMENT_LIST" | awk 'NF{count++} END{print count+0}')
+
+  if [ "$DOCUMENT_COUNT" -gt 1 ]; then
+    echo "📄 Sending ${DOCUMENT_COUNT} documents as media group"
+    send_media_group "${INPUT_TO}" "document" "${DOCUMENT_LIST}" "${MESSAGE}" "${THREAD_ID}"
+  elif [ "$DOCUMENT_COUNT" -eq 1 ]; then
+    document_path=$(printf '%s\n' "$DOCUMENT_LIST" | awk 'NF{print; exit}')
+    echo "📄 Sending document: ${document_path}"
+    send_document "${INPUT_TO}" "${document_path}" "" "${THREAD_ID}"
+  fi
 fi
+
 
 echo "✅ Done!"

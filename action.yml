@@ -1,6 +1,6 @@
 name: "Telegram Topic Notify"
 description: "Send Telegram notifications to groups and forum topics with message_thread_id support"
-author: "Salmansha08"
+author: "Dev4Mod"
 
 inputs:
   to:
@@ -19,11 +19,12 @@ inputs:
     description: "Unique identifier for the target message thread (topic) of a forum supergroup"
     required: false
   photo:
-    description: "Path to photo file to send"
+    description: "Path(s) to photo file(s) to send"
     required: false
   document:
-    description: "Path to document file to send"
+    description: "Path(s) to document file(s) to send"
     required: false
+
   format:
     description: "Message format: markdown or html"
     required: false

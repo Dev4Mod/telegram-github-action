@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Send Telegram Message
-        uses: Salmansha08/telegram-github-action@main
+        uses: Dev4Mod/telegram-github-action@main
         with:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
           token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -41,7 +41,7 @@ For supergroups with topics enabled, you can send messages to a specific topic:
 
 ```yml
 - name: Send to CI Topic
-  uses: Salmansha08/telegram-github-action@main
+  uses: Dev4Mod/telegram-github-action@main
   with:
     to: ${{ secrets.TELEGRAM_CHAT_ID }}
     token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -54,7 +54,7 @@ For supergroups with topics enabled, you can send messages to a specific topic:
 
 ```yml
 - name: Send Photo
-  uses: Salmansha08/telegram-github-action@main
+  uses: Dev4Mod/telegram-github-action@main
   with:
     to: ${{ secrets.TELEGRAM_CHAT_ID }}
     token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -63,16 +63,40 @@ For supergroups with topics enabled, you can send messages to a specific topic:
     message: "Build screenshot"
 ```
 
+### 🖼️ Send Multiple Photos
+
+```yml
+- name: Send Photos
+  uses: Dev4Mod/telegram-github-action@main
+  with:
+    to: ${{ secrets.TELEGRAM_CHAT_ID }}
+    token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+    photo: "./a.png,./b.png,./c.png"
+    message: "Build screenshots"
+```
+
 ### 📄 Send with Document
 
 ```yml
 - name: Send Document
-  uses: Salmansha08/telegram-github-action@main
+  uses: Dev4Mod/telegram-github-action@main
   with:
     to: ${{ secrets.TELEGRAM_CHAT_ID }}
     token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
     document: "./build-report.pdf"
 ```
+
+### 📎 Send Multiple Documents
+
+```yml
+- name: Send Documents
+  uses: Dev4Mod/telegram-github-action@main
+  with:
+    to: ${{ secrets.TELEGRAM_CHAT_ID }}
+    token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+    document: "./report.pdf,./logs.txt"
+```
+
 
 ## 📥 Input Parameters
 
@@ -83,8 +107,9 @@ For supergroups with topics enabled, you can send messages to a specific topic:
 | `message`                  | ❌       | Message text to send                                  |
 | `message_file`             | ❌       | Path to file containing message (overrides `message`) |
 | `message_thread_id`        | ❌       | Topic ID for forum supergroups                        |
-| `photo`                    | ❌       | Path to photo file to send                            |
-| `document`                 | ❌       | Path to document file to send                         |
+| `photo`                    | ❌       | Path(s) to photo file(s) to send                      |
+| `document`                 | ❌       | Path(s) to document file(s) to send                   |
+
 | `format`                   | ❌       | Message format: `markdown` or `html`                  |
 | `disable_web_page_preview` | ❌       | Disable link preview (default: `false`)               |
 | `disable_notification`     | ❌       | Send silently (default: `false`)                      |
@@ -153,7 +178,7 @@ jobs:
     environment: "Telegram Github Action"  # ← Add this line
     steps:
       - name: Send Telegram Message
-        uses: Salmansha08/telegram-github-action@main
+        uses: Dev4Mod/telegram-github-action@main
         with:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
           token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
