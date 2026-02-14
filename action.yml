@@ -26,8 +26,12 @@ inputs:
     required: false
 
   format:
-    description: "Message format: markdown or html"
+    description: "Message format: markdown, markdownv2 or html"
     required: false
+  escape_markdown:
+    description: "Auto-escape special characters for Markdown/MarkdownV2 in user-provided messages (default: true)"
+    required: false
+    default: "true"
   disable_web_page_preview:
     description: "Disable link preview in messages"
     required: false

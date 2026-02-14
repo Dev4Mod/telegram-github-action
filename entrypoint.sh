@@ -9,12 +9,66 @@ TELEGRAM_API="https://api.telegram.org/bot${INPUT_TOKEN}"
 PARSE_MODE="${INPUT_FORMAT:-}"
 DISABLE_WEB_PAGE_PREVIEW="${INPUT_DISABLE_WEB_PAGE_PREVIEW:-false}"
 DISABLE_NOTIFICATION="${INPUT_DISABLE_NOTIFICATION:-false}"
+ESCAPE_MARKDOWN="${INPUT_ESCAPE_MARKDOWN:-true}"
+
+# Escape special characters for Telegram MarkdownV2
+escape_markdownv2() {
+  printf '%s' "$1" | sed \
+    -e 's/\\/\\\\/g' \
+    -e 's/\*/\\*/g' \
+    -e 's/_/\\_/g' \
+    -e 's/\[/\\[/g' \
+    -e 's/\]/\\]/g' \
+    -e 's/(/\\(/g' \
+    -e 's/)/\\)/g' \
+    -e 's/~/\\~/g' \
+    -e 's/`/\\`/g' \
+    -e 's/>/\\>/g' \
+    -e 's/#/\\#/g' \
+    -e 's/+/\\+/g' \
+    -e 's/-/\\-/g' \
+    -e 's/=/\\=/g' \
+    -e 's/|/\\|/g' \
+    -e 's/{/\\{/g' \
+    -e 's/}/\\}/g' \
+    -e 's/\./\\./g' \
+    -e 's/!/\\!/g'
+}
+
+# Escape special characters for Telegram Markdown (legacy v1)
+escape_markdown_v1() {
+  printf '%s' "$1" | sed \
+    -e 's/\\/\\\\/g' \
+    -e 's/\*/\\*/g' \
+    -e 's/_/\\_/g' \
+    -e 's/`/\\`/g' \
+    -e 's/\[/\\[/g'
+}
+
+# Apply escape based on current parse mode
+apply_escape() {
+  local text="$1"
+  case "${PARSE_MODE}" in
+    MarkdownV2|markdownv2)
+      escape_markdownv2 "$text"
+      ;;
+    Markdown|markdown)
+      escape_markdown_v1 "$text"
+      ;;
+    *)
+      printf '%s' "$text"
+      ;;
+  esac
+}
 
 # Build message content
+USER_PROVIDED_MESSAGE=false
 if [ -n "${INPUT_MESSAGE_FILE:-}" ] && [ -f "${INPUT_MESSAGE_FILE}" ]; then
   MESSAGE=$(cat "${INPUT_MESSAGE_FILE}")
+  USER_PROVIDED_MESSAGE=true
 elif [ -n "${INPUT_MESSAGE:-}" ]; then
   MESSAGE="${INPUT_MESSAGE}"
+  USER_PROVIDED_MESSAGE=true
 else
   # Default message for GitHub Actions
   MESSAGE="🔔 *GitHub Actions*
@@ -23,6 +77,11 @@ else
 🔀 Event: \`${GITHUB_EVENT_NAME:-unknown}\`
 👤 Actor: \`${GITHUB_ACTOR:-unknown}\`
 🔗 [View Workflow](${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-}/actions/runs/${GITHUB_RUN_ID:-})"
+fi
+
+# Auto-escape user-provided messages when parse_mode is set
+if [ "$USER_PROVIDED_MESSAGE" = true ] && [ "$ESCAPE_MARKDOWN" = true ] && [ -n "${PARSE_MODE}" ]; then
+  MESSAGE=$(apply_escape "$MESSAGE")
 fi
 
 # Trim leading/trailing spaces
