@@ -207,114 +207,76 @@ send_media_group() {
   local thread_id="$5"
 
   local index=0
-  local entries=""
   local file_path
-  local entry
   local total
   local last_index
-
-  echo "[DEBUG] send_media_group called"
-  echo "[DEBUG]   chat_id=${chat_id}"
-  echo "[DEBUG]   media_type=${media_type}"
-  echo "[DEBUG]   caption length=$(printf '%s' "$caption" | wc -c)"
-  echo "[DEBUG]   thread_id=${thread_id}"
-  echo "[DEBUG]   PARSE_MODE=${PARSE_MODE}"
-  echo "[DEBUG]   media_list raw:"
-  printf '%s\n' "$media_list" | cat -A
-  echo "[DEBUG]   --- end media_list ---"
+  local media_json_file
 
   total=$(printf '%s\n' "$media_list" | awk 'NF{count++} END{print count+0}')
   last_index=$((total - 1))
-  echo "[DEBUG]   total=${total}, last_index=${last_index}"
+
+  # Build media JSON array using jq, writing directly to a temp file
+  media_json_file=$(mktemp)
+  printf '[' > "$media_json_file"
 
   set -- -s -X POST "${TELEGRAM_API}/sendMediaGroup" \
     -F "chat_id=${chat_id}"
 
   while IFS= read -r file_path; do
     if [ -z "$file_path" ]; then
-      echo "[DEBUG]   skipping empty line"
       continue
     fi
 
-    echo "[DEBUG]   processing file index=${index}: '${file_path}'"
-
-    # Check if file exists
-    if [ -f "$file_path" ]; then
-      echo "[DEBUG]     file exists, size=$(wc -c < "$file_path") bytes"
-    else
-      echo "[DEBUG]     WARNING: file NOT found at '${file_path}'"
-      ls -la "$(dirname "$file_path")" 2>/dev/null || echo "[DEBUG]     parent dir not found"
+    # Add comma separator between entries
+    if [ $index -gt 0 ]; then
+      printf ',' >> "$media_json_file"
     fi
 
+    # Build and append JSON entry for this file
     if [ $index -eq $last_index ] && [ -n "$caption" ]; then
       if [ -n "$PARSE_MODE" ]; then
-        entry=$(jq -n \
+        jq -nc \
           --arg type "$media_type" \
           --arg media "attach://file${index}" \
           --arg caption "$caption" \
           --arg parse_mode "$PARSE_MODE" \
-          '{type:$type, media:$media, caption:$caption, parse_mode:$parse_mode}'
-        )
+          '{type:$type, media:$media, caption:$caption, parse_mode:$parse_mode}' >> "$media_json_file"
       else
-        entry=$(jq -n \
+        jq -nc \
           --arg type "$media_type" \
           --arg media "attach://file${index}" \
           --arg caption "$caption" \
-          '{type:$type, media:$media, caption:$caption}'
-        )
+          '{type:$type, media:$media, caption:$caption}' >> "$media_json_file"
       fi
     else
-      entry=$(jq -n \
+      jq -nc \
         --arg type "$media_type" \
         --arg media "attach://file${index}" \
-        '{type:$type, media:$media}'
-      )
+        '{type:$type, media:$media}' >> "$media_json_file"
     fi
-
-    echo "[DEBUG]   entry[${index}]=${entry}"
-
-    if [ $index -gt 0 ]; then
-      entries="${entries}
-"
-    fi
-    entries="${entries}${entry}"
 
     set -- "$@" -F "file${index}=@${file_path}"
-    echo "[DEBUG]   added curl arg: -F file${index}=@${file_path}"
     index=$((index + 1))
   done <<EOF
 ${media_list}
 EOF
 
-  echo "[DEBUG]   total files processed: ${index}"
+  printf ']' >> "$media_json_file"
 
   if [ $index -eq 0 ]; then
-    echo "[DEBUG]   no files processed, returning"
+    rm -f "$media_json_file"
     return
   fi
 
-  echo "[DEBUG]   raw entries:"
-  printf '%s\n' "$entries" | cat -A
-  echo "[DEBUG]   --- end raw entries ---"
-
-  media_payload=$(printf '%s\n' "$entries" | jq -sc '.')
-  echo "[DEBUG]   media_payload=${media_payload}"
-
-  set -- "$@" -F "media=${media_payload}"
+  # Use <file to send media JSON from file, avoiding shell expansion issues
+  set -- "$@" -F "media=<${media_json_file}"
 
   if [ -n "$thread_id" ]; then
     set -- "$@" -F "message_thread_id=${thread_id}"
   fi
 
-  # Log full curl command (masking token)
-  echo "[DEBUG]   curl args (token masked):"
-  for arg in "$@"; do
-    echo "[DEBUG]     $(echo "$arg" | sed "s|bot[^/]*/|bot****/|g")"
-  done
-
   RESPONSE=$(curl "$@")
-
-  echo "[DEBUG]   response=${RESPONSE}"
+  rm -f "$media_json_file"
 
   OK=$(echo "$RESPONSE" | jq -r '.ok')
   if [ "$OK" != "true" ]; then
