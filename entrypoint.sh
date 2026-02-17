@@ -225,17 +225,22 @@ send_media_group() {
     fi
 
     if [ $index -eq $last_index ] && [ -n "$caption" ]; then
-      entry=$(jq -n \
-        --arg type "$media_type" \
-        --arg media "attach://file${index}" \
-        --arg caption "$caption" \
-        --arg parse_mode "$PARSE_MODE" \
-        'if $parse_mode != "" then
-            {type:$type, media:$media, caption:$caption, parse_mode:$parse_mode}
-          else
-            {type:$type, media:$media, caption:$caption}
-          end'
-      )
+      if [ -n "$PARSE_MODE" ]; then
+        entry=$(jq -n \
+          --arg type "$media_type" \
+          --arg media "attach://file${index}" \
+          --arg caption "$caption" \
+          --arg parse_mode "$PARSE_MODE" \
+          '{type:$type, media:$media, caption:$caption, parse_mode:$parse_mode}'
+        )
+      else
+        entry=$(jq -n \
+          --arg type "$media_type" \
+          --arg media "attach://file${index}" \
+          --arg caption "$caption" \
+          '{type:$type, media:$media, caption:$caption}'
+        )
+      fi
     else
       entry=$(jq -n \
         --arg type "$media_type" \
