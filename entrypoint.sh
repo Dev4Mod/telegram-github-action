@@ -213,15 +213,37 @@ send_media_group() {
   local total
   local last_index
 
+  echo "[DEBUG] send_media_group called"
+  echo "[DEBUG]   chat_id=${chat_id}"
+  echo "[DEBUG]   media_type=${media_type}"
+  echo "[DEBUG]   caption length=$(printf '%s' "$caption" | wc -c)"
+  echo "[DEBUG]   thread_id=${thread_id}"
+  echo "[DEBUG]   PARSE_MODE=${PARSE_MODE}"
+  echo "[DEBUG]   media_list raw:"
+  printf '%s\n' "$media_list" | cat -A
+  echo "[DEBUG]   --- end media_list ---"
+
   total=$(printf '%s\n' "$media_list" | awk 'NF{count++} END{print count+0}')
   last_index=$((total - 1))
+  echo "[DEBUG]   total=${total}, last_index=${last_index}"
 
   set -- -s -X POST "${TELEGRAM_API}/sendMediaGroup" \
     -F "chat_id=${chat_id}"
 
   while IFS= read -r file_path; do
     if [ -z "$file_path" ]; then
+      echo "[DEBUG]   skipping empty line"
       continue
+    fi
+
+    echo "[DEBUG]   processing file index=${index}: '${file_path}'"
+
+    # Check if file exists
+    if [ -f "$file_path" ]; then
+      echo "[DEBUG]     file exists, size=$(wc -c < "$file_path") bytes"
+    else
+      echo "[DEBUG]     WARNING: file NOT found at '${file_path}'"
+      ls -la "$(dirname "$file_path")" 2>/dev/null || echo "[DEBUG]     parent dir not found"
     fi
 
     if [ $index -eq $last_index ] && [ -n "$caption" ]; then
@@ -249,6 +271,8 @@ send_media_group() {
       )
     fi
 
+    echo "[DEBUG]   entry[${index}]=${entry}"
+
     if [ $index -gt 0 ]; then
       entries="${entries}
 "
@@ -256,23 +280,41 @@ send_media_group() {
     entries="${entries}${entry}"
 
     set -- "$@" -F "file${index}=@${file_path}"
+    echo "[DEBUG]   added curl arg: -F file${index}=@${file_path}"
     index=$((index + 1))
   done <<EOF
 ${media_list}
 EOF
 
+  echo "[DEBUG]   total files processed: ${index}"
+
   if [ $index -eq 0 ]; then
+    echo "[DEBUG]   no files processed, returning"
     return
   fi
 
+  echo "[DEBUG]   raw entries:"
+  printf '%s\n' "$entries" | cat -A
+  echo "[DEBUG]   --- end raw entries ---"
+
   media_payload=$(printf '%s\n' "$entries" | jq -sc '.')
+  echo "[DEBUG]   media_payload=${media_payload}"
+
   set -- "$@" -F "media=${media_payload}"
 
   if [ -n "$thread_id" ]; then
     set -- "$@" -F "message_thread_id=${thread_id}"
   fi
 
+  # Log full curl command (masking token)
+  echo "[DEBUG]   curl args (token masked):"
+  for arg in "$@"; do
+    echo "[DEBUG]     $(echo "$arg" | sed "s|bot[^/]*/|bot****/|g")"
+  done
+
   RESPONSE=$(curl "$@")
+
+  echo "[DEBUG]   response=${RESPONSE}"
 
   OK=$(echo "$RESPONSE" | jq -r '.ok')
   if [ "$OK" != "true" ]; then
