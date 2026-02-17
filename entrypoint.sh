@@ -265,8 +265,7 @@ EOF
     return
   fi
 
-  media_payload=$(printf '%s
-' "$entries" | jq -s '.')
+  media_payload=$(printf '%s\n' "$entries" | jq -sc '.')
   set -- "$@" -F "media=${media_payload}"
 
   if [ -n "$thread_id" ]; then
