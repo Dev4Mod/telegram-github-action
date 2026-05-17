@@ -282,7 +282,7 @@ EOF
   if [ "$OK" != "true" ]; then
     ERROR_DESC=$(echo "$RESPONSE" | jq -r '.description // "Unknown error"')
     echo "Error sending media group: ${ERROR_DESC}"
-    exit 1
+    return 1
   fi
 
   echo "Media group sent successfully!"
@@ -358,7 +358,22 @@ if [ -n "${INPUT_PHOTO:-}" ]; then
 
   if [ "$PHOTO_COUNT" -gt 1 ]; then
     echo "📷 Sending ${PHOTO_COUNT} photos as media group"
-    send_media_group "${INPUT_TO}" "photo" "${PHOTO_LIST}" "${MESSAGE}" "${THREAD_ID}"
+    if ! send_media_group "${INPUT_TO}" "photo" "${PHOTO_LIST}" "${MESSAGE}" "${THREAD_ID}"; then
+      echo "📷 Falling back to individual photo sends..."
+      photo_index=0
+      while IFS= read -r photo_path; do
+        [ -n "$photo_path" ] || continue
+        photo_index=$((photo_index + 1))
+        echo "📷 Sending photo ${photo_index}/${PHOTO_COUNT}: ${photo_path}"
+        if [ "$photo_index" -eq "$PHOTO_COUNT" ]; then
+          send_photo "${INPUT_TO}" "${photo_path}" "${MESSAGE}" "${THREAD_ID}"
+        else
+          send_photo "${INPUT_TO}" "${photo_path}" "" "${THREAD_ID}"
+        fi
+      done <<EOF
+${PHOTO_LIST}
+EOF
+    fi
   elif [ "$PHOTO_COUNT" -eq 1 ]; then
     photo_path=$(printf '%s\n' "$PHOTO_LIST" | awk 'NF{print; exit}')
     echo "📷 Sending photo: ${photo_path}"
@@ -373,7 +388,22 @@ if [ -n "${INPUT_DOCUMENT:-}" ]; then
 
   if [ "$DOCUMENT_COUNT" -gt 1 ]; then
     echo "📄 Sending ${DOCUMENT_COUNT} documents as media group"
-    send_media_group "${INPUT_TO}" "document" "${DOCUMENT_LIST}" "${MESSAGE}" "${THREAD_ID}"
+    if ! send_media_group "${INPUT_TO}" "document" "${DOCUMENT_LIST}" "${MESSAGE}" "${THREAD_ID}"; then
+      echo "📄 Falling back to individual document sends..."
+      doc_index=0
+      while IFS= read -r doc_path; do
+        [ -n "$doc_path" ] || continue
+        doc_index=$((doc_index + 1))
+        echo "📄 Sending document ${doc_index}/${DOCUMENT_COUNT}: ${doc_path}"
+        if [ "$doc_index" -eq "$DOCUMENT_COUNT" ]; then
+          send_document "${INPUT_TO}" "${doc_path}" "${MESSAGE}" "${THREAD_ID}"
+        else
+          send_document "${INPUT_TO}" "${doc_path}" "" "${THREAD_ID}"
+        fi
+      done <<EOF
+${DOCUMENT_LIST}
+EOF
+    fi
   elif [ "$DOCUMENT_COUNT" -eq 1 ]; then
     document_path=$(printf '%s\n' "$DOCUMENT_LIST" | awk 'NF{print; exit}')
     echo "📄 Sending document: ${document_path}"
